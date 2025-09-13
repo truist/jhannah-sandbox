@@ -21,7 +21,9 @@ type countEntry struct {
 func sortByCountDescending(m map[string]int) []countEntry {
 	var sorted []countEntry
 	for k, v := range m {
-		sorted = append(sorted, countEntry{Acct: k, Count: v})
+		if v > 1 { // filter out single-count entries
+			sorted = append(sorted, countEntry{Acct: k, Count: v})
+		}
 	}
 	sort.Slice(sorted, func(i, j int) bool {
 		return sorted[i].Count > sorted[j].Count
@@ -54,7 +56,8 @@ func main() {
 		AccessToken: token,
 	})
 
-	activityCount := make(map[string]int)
+	tootCount := make(map[string]int)
+	boostCount := make(map[string]int)
 
 	var maxID mastodon.ID
 	limit := 40
@@ -82,13 +85,13 @@ func main() {
 				stop = true
 				break
 			}
-			var acct string
 			if status.Reblog != nil {
-				acct = status.Reblog.Account.Acct
+				acct := status.Reblog.Account.Acct
+				boostCount[acct]++
 			} else {
-				acct = status.Account.Acct
+				acct := status.Account.Acct
+				tootCount[acct]++
 			}
-			activityCount[acct]++
 		}
 
 		if stop {
@@ -99,16 +102,44 @@ func main() {
 		pageNum++
 	}
 
-	// Calculate total post activity
-	total := 0
-	for _, count := range activityCount {
-		total += count
+	// Calculate totals
+	totalToots := 0
+	for _, count := range tootCount {
+		totalToots += count
 	}
-	fmt.Printf("\n📊 Total timeline posts in last %d hours: %d\n", cutoffHours, total)
+	totalBoosts := 0
+	for _, count := range boostCount {
+		totalBoosts += count
+	}
+	totalCombined := totalToots + totalBoosts
 
-	// Display sorted summary
-	fmt.Println("\n📊 Top Activity (Toots + Boosts):")
-	for _, entry := range sortByCountDescending(activityCount) {
+	fmt.Printf("\n📊 Total timeline posts in last %d hours:\n", cutoffHours)
+	fmt.Printf("📝 Toots: %d\n", totalToots)
+	fmt.Printf("🔁 Boosts: %d\n", totalBoosts)
+	fmt.Printf("➕ Combined: %d\n", totalCombined)
+
+	// Display sorted summaries
+	fmt.Println("\n📊 Top Toots:")
+	for _, entry := range sortByCountDescending(tootCount) {
+		fmt.Printf("👤 @%s → %d\n", entry.Acct, entry.Count)
+	}
+
+	fmt.Println("\n📊 Top Boosts:")
+	for _, entry := range sortByCountDescending(boostCount) {
+		fmt.Printf("👤 @%s → %d\n", entry.Acct, entry.Count)
+	}
+
+	// Build combined counts
+	combinedCount := make(map[string]int)
+	for acct, count := range tootCount {
+		combinedCount[acct] += count
+	}
+	for acct, count := range boostCount {
+		combinedCount[acct] += count
+	}
+
+	fmt.Println("\n📊 Top Combined (Toots + Boosts):")
+	for _, entry := range sortByCountDescending(combinedCount) {
 		fmt.Printf("👤 @%s → %d\n", entry.Acct, entry.Count)
 	}
 }
